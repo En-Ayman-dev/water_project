@@ -1,8 +1,11 @@
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../subscribers/presentation/controllers/subscriber_controller.dart';
 import '../controllers/collection_controller.dart';
+// استيراد خدمة الإيصالات
+import '../../domain/services/receipt_service.dart';
 
 class CollectionScreen extends ConsumerStatefulWidget {
   const CollectionScreen({super.key});
@@ -33,16 +36,25 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             // 2. بطاقة الديون
             if (state.selectedSubscriber != null) ...[
               Card(
-                color: state.totalDebt > 0 ? Colors.red.shade900.withOpacity(0.3) : Colors.green.shade900.withOpacity(0.3),
+                color: state.totalDebt > 0
+                    ? Colors.red.shade900.withOpacity(0.3)
+                    : Colors.green.shade900.withOpacity(0.3),
                 child: Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     children: [
-                      const Text('إجمالي المديونية المستحقة', style: TextStyle(color: Colors.white70)),
+                      const Text(
+                        'إجمالي المديونية المستحقة',
+                        style: TextStyle(color: Colors.white70),
+                      ),
                       const SizedBox(height: 8),
                       Text(
                         '${state.totalDebt.toStringAsFixed(2)} ريال',
-                        style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+                        style: const TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ],
                   ),
@@ -53,7 +65,9 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
               // 3. إدخال المبلغ
               TextField(
                 controller: _amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'المبلغ المستلم',
                   prefixIcon: const Icon(Icons.attach_money),
@@ -71,8 +85,12 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
               const SizedBox(height: 16),
 
               // 4. معاينة التوزيع (Simulation)
-              if (state.preview != null && state.preview!.allocations.isNotEmpty) ...[
-                const Text('معاينة التوزيع (FIFO):', style: TextStyle(fontWeight: FontWeight.bold)),
+              if (state.preview != null &&
+                  state.preview!.allocations.isNotEmpty) ...[
+                const Text(
+                  'معاينة التوزيع (FIFO):',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
                 ListView.builder(
                   shrinkWrap: true,
@@ -81,7 +99,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                   itemBuilder: (context, index) {
                     final alloc = state.preview!.allocations[index];
                     final isFullPay = alloc.newStatus == 'paid';
-                    
+
                     return ListTile(
                       dense: true,
                       leading: Icon(
@@ -89,16 +107,23 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                         color: isFullPay ? Colors.green : Colors.orange,
                       ),
                       title: Text(alloc.invoice.invoiceNo),
-                      subtitle: Text('سيتم سداد: ${alloc.amountToPay.toStringAsFixed(2)} ريال'),
+                      subtitle: Text(
+                        'سيتم سداد: ${alloc.amountToPay.toStringAsFixed(2)} ريال',
+                      ),
                       trailing: Text(
-                        isFullPay ? 'سداد كامل' : 'متبقي: ${alloc.remainingInvoiceBalance.toStringAsFixed(2)}',
-                        style: TextStyle(color: isFullPay ? Colors.green : Colors.orange, fontSize: 12),
+                        isFullPay
+                            ? 'سداد كامل'
+                            : 'متبقي: ${alloc.remainingInvoiceBalance.toStringAsFixed(2)}',
+                        style: TextStyle(
+                          color: isFullPay ? Colors.green : Colors.orange,
+                          fontSize: 12,
+                        ),
                       ),
                     );
                   },
                 ),
                 const Divider(),
-                if (state.preview!.remainingDebt > 0.1) 
+                if (state.preview!.remainingDebt > 0.1)
                   Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text(
@@ -107,37 +132,32 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // 5. زر التنفيذ
                 FilledButton.icon(
-                  onPressed: state.isLoading 
-                    ? null 
-                    : () async {
-                        try {
-                          final success = await controller.submitPayment(_amountController.text);
-                          if (success && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('تم التحصيل وحفظ الإيصال بنجاح!')),
-                            );
-                            _amountController.clear();
-                          }
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
-                            );
-                          }
-                        }
-                      },
+                  onPressed: state.isLoading
+                      ? null
+                      : () => _handlePayment(
+                          context,
+                          controller,
+                          state.selectedSubscriber!.id,
+                        ),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.green,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
-                  icon: state.isLoading 
-                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                    : const Icon(Icons.print),
+                  icon: state.isLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Icon(Icons.print),
                   label: const Text('اعتماد التحصيل وإصدار الإيصال'),
                 ),
               ],
@@ -148,8 +168,93 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     );
   }
 
+  // دالة التعامل مع الدفع والطباعة
+  Future<void> _handlePayment(
+    BuildContext context,
+    CollectionController controller,
+    int subscriberId,
+  ) async {
+    try {
+      final success = await controller.submitPayment(_amountController.text);
+      if (success && context.mounted) {
+        // عرض نافذة نجاح مع خيار الطباعة
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Text('تم التحصيل بنجاح'),
+              ],
+            ),
+            content: const Text('تم حفظ العملية وتوزيع المبلغ على الفواتير.'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  _amountController.clear();
+                  Navigator.pop(dialogContext); // إغلاق الديالوج
+                },
+                child: const Text('إغلاق'),
+              ),
+              FilledButton.icon(
+                icon: const Icon(Icons.print),
+                label: const Text('طباعة الإيصال'),
+                onPressed: () async {
+                  Navigator.pop(dialogContext); // إغلاق الديالوج أولاً
+                  _amountController.clear();
+
+                  // محاولة طباعة أحدث إيصال لهذا المشترك
+                  // ملاحظة: هذا حل التفافي لأننا لا نملك ID الإيصال مباشرة من الدالة السابقة
+                  // الحل الأمثل هو تعديل Controller ليرجع ID، لكن هذا يفي بالغرض حالياً
+                  try {
+                    final db = ref.read(appDatabaseProvider);
+                    final lastPayment =
+                        await (db.select(db.payments)
+                              ..where(
+                                (t) => t.subscriberId.equals(subscriberId),
+                              )
+                              ..orderBy([
+                                (t) => OrderingTerm(
+                                  expression: t.paidAt,
+                                  mode: OrderingMode.desc,
+                                ),
+                              ])
+                              ..limit(1))
+                            .getSingle();
+
+                    await ref
+                        .read(receiptServiceProvider)
+                        .printReceipt(lastPayment.id);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('فشل الطباعة: $e')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   // ودجت اختيار المشترك (Modal Bottom Sheet)
-  Widget _buildSubscriberSelector(BuildContext context, WidgetRef ref, Subscriber? selected) {
+  Widget _buildSubscriberSelector(
+    BuildContext context,
+    WidgetRef ref,
+    Subscriber? selected,
+  ) {
     return InkWell(
       onTap: () => _showSubscriberSearchSheet(context, ref),
       child: Container(
@@ -166,10 +271,16 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('المشترك', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const Text(
+                    'المشترك',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                   Text(
                     selected?.fullName ?? 'اضغط لاختيار مشترك...',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
@@ -193,12 +304,18 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             builder: (context, ref, _) {
               // نعيد استخدام مزود قائمة المشتركين الموجود سابقاً
               final subscribersAsync = ref.watch(subscribersListProvider);
-              
+
               return Column(
                 children: [
                   const Padding(
                     padding: EdgeInsets.all(16.0),
-                    child: Text('اختر المشترك', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'اختر المشترك',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                   Expanded(
                     child: subscribersAsync.when(
@@ -208,17 +325,22 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
                         itemBuilder: (context, index) {
                           final sub = list[index];
                           return ListTile(
-                            leading: const CircleAvatar(child: Icon(Icons.person)),
+                            leading: const CircleAvatar(
+                              child: Icon(Icons.person),
+                            ),
                             title: Text(sub.fullName),
                             subtitle: Text(sub.phone ?? '-'),
                             onTap: () {
-                              ref.read(collectionControllerProvider.notifier).selectSubscriber(sub);
+                              ref
+                                  .read(collectionControllerProvider.notifier)
+                                  .selectSubscriber(sub);
                               Navigator.pop(context);
                             },
                           );
                         },
                       ),
-                      loading: () => const Center(child: CircularProgressIndicator()),
+                      loading: () =>
+                          const Center(child: CircularProgressIndicator()),
                       error: (e, s) => Center(child: Text('Error: $e')),
                     ),
                   ),

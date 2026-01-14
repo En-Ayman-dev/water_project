@@ -25,6 +25,8 @@ class BillingCyclesScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        // ✅ إضافة heroTag فريد لمنع تضارب الأنميشن مع الصفحات الأخرى
+        heroTag: 'billing_cycles_open_fab', 
         onPressed: () => _showOpenCycleDialog(context, ref),
         label: const Text('فتح دورة جديدة'),
         icon: const Icon(Icons.calendar_month),
@@ -51,8 +53,8 @@ class BillingCyclesScreen extends ConsumerWidget {
                   subtitle: Text(isOpen ? 'مفتوحة - تقبل القراءات والفواتير' : 'مغلقة'),
                   trailing: const Icon(Icons.arrow_forward_ios, size: 16),
                   onTap: () {
-                    // الانتقال لصفحة التفاصيل (سنضيف المسار في الراوتر لاحقاً)
-                    context.push('/cycles/${cycle.id}');
+                    // ✅ تصحيح المسار ليطابق هيكلية الراوتر المتداخلة
+                    context.push('/billing/cycles/${cycle.id}');
                   },
                 ),
               );
