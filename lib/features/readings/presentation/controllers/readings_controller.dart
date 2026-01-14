@@ -49,7 +49,7 @@ class ReadingsController extends _$ReadingsController {
         .getSingleOrNull();
 
       // 3. جلب آخر قراءة سابقة (من دورات سابقة) لتحديد نقطة البداية
-      // نبحث عن أحدث قراءة تاريخياً لهذا العداد
+      // نبحث عن أحدث قراءة تاريخياً لهذا العداد باستثناء الدورة الحالية
       final lastReadingRow = await (db.select(db.meterReadings)
         ..where((t) => t.meterId.equals(meter.id) & t.cycleId.isNotValue(cycleId))
         ..orderBy([(t) => OrderingTerm(expression: t.currentReading, mode: OrderingMode.desc)])
@@ -75,26 +75,35 @@ class ReadingsController extends _$ReadingsController {
     required int currentVal,
     required int previousVal,
   }) async {
-    // تحقق منطقي
+    final db = ref.read(appDatabaseProvider);
+
+    // 🔒 1. التحقق الصارم من حالة الدورة (Strict Locking)
+    // لا نسمح بأي تعديل إذا كانت الدورة مغلقة
+    final cycle = await (db.select(db.billingCycles)..where((t) => t.id.equals(cycleId))).getSingle();
+    
+    if (cycle.status == 'closed') {
+      throw Exception('⛔ عذراً: لا يمكن إدخال أو تعديل القراءات لأن الدورة مغلقة.');
+    }
+
+    // 2. التحقق المنطقي للقراءة
     if (currentVal < previousVal) {
       throw Exception('خطأ: القراءة الحالية أقل من السابقة!');
     }
 
-    final db = ref.read(appDatabaseProvider);
     final units = currentVal - previousVal;
 
-    // الحفظ في قاعدة البيانات
-    await db.into(db.meterReadings).insert(MeterReadingsCompanion(
+    // 3. الحفظ (نستخدم insertOnConflictUpdate للسماح بالتصحيح طالما الدورة مفتوحة)
+    await db.into(db.meterReadings).insertOnConflictUpdate(MeterReadingsCompanion(
       cycleId: Value(cycleId),
       meterId: Value(meterId),
       previousReading: Value(previousVal),
       currentReading: Value(currentVal),
       units: Value(units),
       status: const Value('normal'),
-      recordedAt: Value(DateTime.now()),
+      recordedAt: Value(DateTime.now()), // تحديث وقت الإدخال
     ));
 
-    // تحديث القائمة لإظهار الحالة الجديدة
+    // 4. تحديث الواجهة
     ref.invalidateSelf();
   }
 }

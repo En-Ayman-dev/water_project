@@ -52,7 +52,7 @@ final class ReadingsControllerProvider
 }
 
 String _$readingsControllerHash() =>
-    r'1f68fde90b6af241f98c18699ce5fc30c82e3e75';
+    r'6116b420b73533eb14aa6f097ec33ac34a9b7ffc';
 
 final class ReadingsControllerFamily extends $Family
     with

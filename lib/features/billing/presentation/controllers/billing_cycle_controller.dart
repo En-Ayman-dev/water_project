@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/database/app_database.dart';
 import '../../domain/services/billing_service.dart';
+// استيراد خدمة التدقيق لتوثيق عملية الإغلاق
+import '../../../audit/application/audit_service.dart';
 
 /// 1) قائمة الدورات
 final billingCyclesListProvider = StreamProvider<List<BillingCycle>>((ref) {
@@ -45,7 +47,7 @@ class BillingCycleController extends AsyncNotifier<void> {
       final startDate = DateTime(year, month, 1);
       final endDate = DateTime(year, month + 1, 0); // آخر يوم في الشهر
 
-      await db
+      final id = await db
           .into(db.billingCycles)
           .insert(
             BillingCyclesCompanion(
@@ -57,14 +59,38 @@ class BillingCycleController extends AsyncNotifier<void> {
               status: const Value('open'),
             ),
           );
+      
+      // توثيق العملية
+      await ref.read(auditServiceProvider).log(
+        action: 'CREATE',
+        entityType: 'BillingCycle',
+        entityId: id,
+        details: 'تم فتح دورة جديدة: ${_getMonthName(month)} $year',
+      );
     });
   }
 
   Future<void> generateInvoices(int cycleId) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+      final db = ref.read(appDatabaseProvider);
+
+      // 🔒 التحقق الصارم: هل الدورة مغلقة؟
+      final cycle = await (db.select(db.billingCycles)..where((t) => t.id.equals(cycleId))).getSingle();
+      if (cycle.status == 'closed') {
+        throw Exception('⛔ عذراً: لا يمكن توليد الفواتير لأن الدورة مغلقة ومؤرشفة.');
+      }
+
       final service = ref.read(billingServiceProvider);
       await service.generateInvoicesForCycle(cycleId);
+      
+      // توثيق العملية
+      await ref.read(auditServiceProvider).log(
+        action: 'GENERATE_INVOICES',
+        entityType: 'BillingCycle',
+        entityId: cycleId,
+        details: 'تم توليد فواتير الدورة',
+      );
     });
   }
 
@@ -74,11 +100,18 @@ class BillingCycleController extends AsyncNotifier<void> {
     state = await AsyncValue.guard(() async {
       final db = ref.read(appDatabaseProvider);
 
+      // 🔒 التحقق الصارم
+      final cycle = await (db.select(db.billingCycles)..where((t) => t.id.equals(cycleId))).getSingle();
+      if (cycle.status == 'closed') {
+        throw Exception('⛔ عذراً: لا يمكن تعديل القراءات لأن الدورة مغلقة.');
+      }
+
       final activeMeters = await (db.select(
         db.meters,
       )..where((t) => t.subscriberId.isNotNull())).get();
 
       final random = Random();
+      int count = 0;
 
       for (final meter in activeMeters) {
         final exists =
@@ -104,7 +137,17 @@ class BillingCycleController extends AsyncNotifier<void> {
                   status: const Value('normal'),
                 ),
               );
+          count++;
         }
+      }
+      
+      if (count > 0) {
+        await ref.read(auditServiceProvider).log(
+          action: 'SIMULATE_READINGS',
+          entityType: 'BillingCycle',
+          entityId: cycleId,
+          details: 'تم توليد $count قراءة عشوائية للاختبار',
+        );
       }
     });
   }
@@ -132,6 +175,7 @@ class BillingCycleController extends AsyncNotifier<void> {
     state = await AsyncValue.guard(() async {
       final db = ref.read(appDatabaseProvider);
 
+      // تنفيذ الإغلاق
       await (db.update(
         db.billingCycles,
       )..where((t) => t.id.equals(cycleId))).write(
@@ -139,6 +183,14 @@ class BillingCycleController extends AsyncNotifier<void> {
           status: const Value('closed'),
           closedAt: Value(DateTime.now()),
         ),
+      );
+
+      // 📝 توثيق حدث الإغلاق (هام جداً للحوكمة)
+      await ref.read(auditServiceProvider).log(
+        action: 'CLOSE_CYCLE',
+        entityType: 'BillingCycle',
+        entityId: cycleId,
+        details: 'تم إغلاق الدورة الشهرية ومنع التعديل عليها',
       );
     });
   }
